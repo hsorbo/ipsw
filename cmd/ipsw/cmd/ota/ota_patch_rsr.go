@@ -1,4 +1,4 @@
-//go:build darwin && cgo
+//go:build cgo
 
 /*
 Copyright © 2026 blacktop
@@ -30,6 +30,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/apex/log"
@@ -250,21 +251,24 @@ var otaPatchRsrCmd = &cobra.Command{
 			}
 		}
 
-		// check if we are running on compatible macOS version
-		host, err := utils.GetBuildInfo()
-		if err != nil {
-			return fmt.Errorf("failed to get host build info: %v", err)
-		}
-		reqVer, err := semver.NewVersion("13.0.0")
-		if err != nil {
-			log.Fatal("failed to convert required macOS version into semver object")
-		}
-		curVer, err := semver.NewVersion(host.ProductVersion)
-		if err != nil {
-			log.Fatal("failed to convert version into semver object")
-		}
-		if curVer.LessThan(reqVer) {
-			return fmt.Errorf("patching OTA only supported on macOS 13+/iOS 16+ (if you are trying to run on iOS let author know as macOS is currently the only supported darwin platform)")
+		// On darwin, patching calls libParallelCompression, which needs macOS 13+.
+		// Elsewhere the portable applier is used and there is no host to check.
+		if runtime.GOOS == "darwin" {
+			host, err := utils.GetBuildInfo()
+			if err != nil {
+				return fmt.Errorf("failed to get host build info: %v", err)
+			}
+			reqVer, err := semver.NewVersion("13.0.0")
+			if err != nil {
+				log.Fatal("failed to convert required macOS version into semver object")
+			}
+			curVer, err := semver.NewVersion(host.ProductVersion)
+			if err != nil {
+				log.Fatal("failed to convert version into semver object")
+			}
+			if curVer.LessThan(reqVer) {
+				return fmt.Errorf("patching OTA only supported on macOS 13+/iOS 16+ (if you are trying to run on iOS let author know as macOS is currently the only supported darwin platform)")
+			}
 		}
 
 		if len(cryptex) > 0 {

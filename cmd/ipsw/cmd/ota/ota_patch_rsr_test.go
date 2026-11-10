@@ -1,4 +1,4 @@
-//go:build darwin && cgo
+//go:build cgo
 
 package ota
 
@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -112,6 +113,19 @@ func TestRsrDeltaBase(t *testing.T) {
 		t.Setenv("PATH", bin)
 	}
 
+	// wantBasePatchFailure checks that the base member was staged and patched.
+	// On darwin the LZRaven base fails in the aa check before reaching
+	// libParallelCompression; elsewhere the portable applier refuses it itself.
+	wantBasePatchFailure := func(t *testing.T, err error) {
+		t.Helper()
+		if err == nil || !strings.Contains(err.Error(), "failed to patch base") {
+			t.Fatalf("rsrDeltaBase() error = %v", err)
+		}
+		if runtime.GOOS == "darwin" && !errors.Is(err, lzraven.ErrUnsupported) {
+			t.Fatalf("rsrDeltaBase() error = %v, want lzraven.ErrUnsupported", err)
+		}
+	}
+
 	t.Run("input folder patches base from its own input", func(t *testing.T) {
 		failingAA(t)
 		in := t.TempDir()
@@ -124,9 +138,7 @@ func TestRsrDeltaBase(t *testing.T) {
 		o := rsrTestOTA(t, map[string]string{delta: "delta", dir + "cryptex-system-arm64e": lzravenBase})
 		// No SystemOS/arm64e_x1 input exists: the delta must not look for one.
 		_, _, err := rsrDeltaBase(o, delta, in, map[string]string{}, 0)
-		if !errors.Is(err, lzraven.ErrUnsupported) || !strings.Contains(err.Error(), "failed to patch base") {
-			t.Fatalf("rsrDeltaBase() error = %v", err)
-		}
+		wantBasePatchFailure(t, err)
 	})
 
 	t.Run("input folder without base input", func(t *testing.T) {
@@ -143,8 +155,6 @@ func TestRsrDeltaBase(t *testing.T) {
 		failingAA(t)
 		o := rsrTestOTA(t, map[string]string{delta: "delta", dir + "cryptex-system-arm64e": lzravenBase})
 		_, _, err := rsrDeltaBase(o, delta, "", map[string]string{}, 0)
-		if !errors.Is(err, lzraven.ErrUnsupported) || !strings.Contains(err.Error(), "failed to patch base") {
-			t.Fatalf("rsrDeltaBase() error = %v", err)
-		}
+		wantBasePatchFailure(t, err)
 	})
 }
